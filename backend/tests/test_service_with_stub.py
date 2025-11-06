@@ -1,4 +1,3 @@
-import asyncio
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
@@ -35,3 +34,6 @@ async def test_service_returns_expected_structure():
     assert result.results[0].field_name == "nome"
     assert result.results[0].value == "fake-nome"
     assert result.metadata.model == "stub"
+    assert result.metadata.profiling is not None
+    assert "total_ms" in result.metadata.profiling
+    assert result.flat["nome"] == "fake-nome"

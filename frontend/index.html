@@ -1089,7 +1089,8 @@
       state.results = results;
 
       if (results) {
-        elements.jsonOutput.textContent = JSON.stringify(results, null, 2);
+        const displayPayload = buildDisplayPayload(results);
+        elements.jsonOutput.textContent = JSON.stringify(displayPayload ?? results, null, 2);
       }
 
       if (results && results.batch && Array.isArray(results.results)) {
@@ -1199,46 +1200,63 @@
 
     async function processBatch(files, schemaArray, onProgress) {
       const total = files.length;
-      const aggregated = [];
+      const results = new Array(total);
+      let processed = 0;
+      const concurrency = Math.min(3, total);
+      let nextIndex = 0;
 
-      for (let index = 0; index < total; index++) {
-        const file = files[index];
-        const schemaItem = schemaArray[index];
+      async function worker() {
+        while (true) {
+          const current = nextIndex;
+          nextIndex += 1;
+          if (current >= total) {
+            break;
+          }
 
-        if (!schemaItem || !schemaItem.label || !schemaItem.extraction_schema) {
-          throw new Error(`Schema entry ${index + 1} must include "label" and "extraction_schema"`);
-        }
+          const file = files[current];
+          const schemaItem = schemaArray[current];
 
-        elements.statusText.textContent = `Processing ${index + 1} of ${total}`;
-        elements.statusBadge.textContent = `Processing ${index + 1}/${total}`;
-        elements.statusBadge.className = 'status-badge loading';
+          if (!schemaItem || !schemaItem.label || !schemaItem.extraction_schema) {
+            throw new Error(`Schema entry ${current + 1} must include "label" and "extraction_schema"`);
+          }
 
-        const raw = await sendExtractionRequest(schemaItem.label, schemaItem.extraction_schema, file);
-        const normalized = normalizeResponse(raw);
+          const raw = await sendExtractionRequest(schemaItem.label, schemaItem.extraction_schema, file);
+          const normalized = normalizeResponse(raw);
 
-        aggregated.push({
-          file: file.name,
-          label: normalized.label,
-          fields: normalized.fields,
-          metadata: normalized.metadata
-        });
-
-        if (typeof onProgress === 'function') {
-          const partial = {
-            batch: true,
-            count: total,
-            processed: aggregated.length,
-            results: [...aggregated]
+          results[current] = {
+            file: file.name,
+            label: normalized.label,
+            fields: normalized.fields,
+            flat: normalized.flat,
+            metadata: normalized.metadata
           };
-          onProgress(partial);
+
+          processed += 1;
+          const partialResults = results.filter(Boolean);
+
+          elements.statusText.textContent = `Processing ${processed} of ${total}`;
+          elements.statusBadge.textContent = `Processing ${processed}/${total}`;
+          elements.statusBadge.className = 'status-badge loading';
+
+          if (typeof onProgress === 'function') {
+            onProgress({
+              batch: true,
+              count: total,
+              processed,
+              results: partialResults
+            });
+          }
         }
       }
+
+      const workers = Array.from({ length: concurrency }, () => worker());
+      await Promise.all(workers);
 
       return {
         batch: true,
         count: total,
-        processed: aggregated.length,
-        results: aggregated
+        processed,
+        results: results.filter(Boolean)
       };
     }
 
@@ -1251,6 +1269,7 @@
         file: file.name,
         label: normalized.label,
         fields: normalized.fields,
+        flat: normalized.flat,
         metadata: normalized.metadata
       };
     }
@@ -1275,10 +1294,10 @@
     }
 
     function normalizeResponse(raw) {
-      const fields = {};
+      const detailed = {};
       if (Array.isArray(raw.results)) {
         raw.results.forEach(item => {
-          fields[item.field_name] = {
+          detailed[item.field_name] = {
             value: item.value,
             source: item.source,
             confidence: item.confidence
@@ -1286,11 +1305,43 @@
         });
       }
 
+      const flat = raw.flat || Object.fromEntries(
+        Object.entries(detailed).map(([key, info]) => [key, info.value])
+      );
+
       return {
         label: raw.label,
-        fields,
+        fields: detailed,
+        flat,
         metadata: raw.metadata || {}
       };
+    }
+
+    function buildDisplayPayload(results) {
+      if (!results) return null;
+
+      if (results.batch && Array.isArray(results.results)) {
+        const summary = {};
+        results.results.forEach((item, index) => {
+          const identifier = item.file || item.label || `document_${index + 1}`;
+          summary[identifier] = item.flat || Object.fromEntries(
+            Object.entries(item.fields || {}).map(([key, info]) => [key, info?.value ?? null])
+          );
+        });
+        return summary;
+      }
+
+      if (results.flat) {
+        return results.flat;
+      }
+
+      if (results.fields) {
+        return Object.fromEntries(
+          Object.entries(results.fields).map(([key, info]) => [key, info?.value ?? null])
+        );
+      }
+
+      return results;
     }
 
     function formatCSVValue(value) {
@@ -1374,7 +1425,8 @@
     // Copy to clipboard
     function copyToClipboard() {
       if (state.results) {
-        navigator.clipboard.writeText(JSON.stringify(state.results, null, 2))
+        const payload = buildDisplayPayload(state.results) ?? state.results;
+        navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
           .then(() => alert('Copied to clipboard!'))
           .catch(() => alert('Failed to copy'));
       }
@@ -1383,7 +1435,8 @@
     // Download JSON
     function downloadJSON() {
       if (state.results) {
-        const blob = new Blob([JSON.stringify(state.results, null, 2)], { type: 'application/json' });
+        const payload = buildDisplayPayload(state.results) ?? state.results;
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -1402,7 +1455,7 @@
       if (state.results.batch && Array.isArray(state.results.results)) {
         const allKeys = new Set();
         state.results.results.forEach(item => {
-          Object.keys(item.fields || {}).forEach(key => allKeys.add(key));
+          Object.keys(item.flat || {}).forEach(key => allKeys.add(key));
         });
 
         const orderedKeys = Array.from(allKeys);
@@ -1413,8 +1466,8 @@
             formatCSVValue(item.file),
             formatCSVValue(item.label),
             ...orderedKeys.map(key => {
-              const field = item.fields?.[key];
-              return formatCSVValue(field ? field.value : '');
+              const value = item.flat?.[key];
+              return formatCSVValue(value);
             })
           ];
           return values.join(',');
@@ -1422,14 +1475,17 @@
 
         csv = [headerRow, ...rows].join('\n');
       } else if (state.results.fields) {
-        const fieldKeys = Object.keys(state.results.fields);
+        const flatMap = state.results.flat || Object.fromEntries(
+          Object.entries(state.results.fields).map(([key, info]) => [key, info?.value ?? null])
+        );
+        const fieldKeys = Object.keys(flatMap);
         const headerRow = ['file', 'label', ...fieldKeys].join(',');
         const valueRow = [
           formatCSVValue(state.results.file || ''),
           formatCSVValue(state.results.label || ''),
           ...fieldKeys.map(key => {
-            const field = state.results.fields[key];
-            return formatCSVValue(field ? field.value : '');
+            const value = flatMap[key];
+            return formatCSVValue(value);
           })
         ].join(',');
         csv = `${headerRow}\n${valueRow}`;

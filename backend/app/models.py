@@ -43,6 +43,7 @@ class ExtractionMetadata(BaseModel):
     duration_ms: Optional[int] = Field(default=None, description="Processing time in milliseconds")
     source: str = Field(default="llm")
     extracted_at: datetime = Field(default_factory=datetime.utcnow)
+    profiling: Optional[Dict[str, int]] = Field(default=None, description="Per-step execution timings in ms")
 
 
 class ExtractionResult(BaseModel):
@@ -53,6 +54,10 @@ class ExtractionResult(BaseModel):
     label: str
     results: List[FieldResult]
     metadata: ExtractionMetadata
+    flat: Dict[str, Optional[Any]] = Field(
+        default_factory=dict,
+        description="Shallow mapping of field name to extracted value",
+    )
 
     @field_validator("results")
     @classmethod

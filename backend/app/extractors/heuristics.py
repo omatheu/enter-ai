@@ -19,6 +19,7 @@ class HeuristicExtractor:
         "placa": r"\b[a-zA-Z]{3}-?\d{4}\b",
         "valor": r"R?\$\s*\d{1,3}(?:\.\d{3})*,\d{2}",
         "numero_documento": r"\b\d{6,12}\b",
+        "subsecao": r"Conselho\s+Seccional\s*-\s*[^\n]+",
     }
 
     KEYWORD_TO_PATTERN = {
@@ -38,6 +39,7 @@ class HeuristicExtractor:
         "total": "valor",
         "numero": "numero_documento",
         "documento": "numero_documento",
+        "subsecao": "subsecao",
     }
 
     ENUM_HINTS = ("pode ser", "opções", "options", "um dos", "one of")
