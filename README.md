@@ -312,17 +312,10 @@ enter-ai/
 ```bash
 # OpenAI Configuration
 OPENAI_API_KEY=sk-your-key-here
-OPENAI_MODEL=gpt-3.5-turbo
-
-# Extraction Settings
-EXTRACTION_MAX_CHARS=6000
-TEMPERATURE=1.0
 ```
 
 ### Modelos Suportados
-- `gpt-3.5-turbo` (padrão)
-- `gpt-4`
-- `gpt-4-turbo`
+- Todos da OPEN AI
 
 ---
 
@@ -348,16 +341,6 @@ Para produção, comente esta linha.
 
 **Problema**: CORS errors no frontend
 **Solução**: Certifique-se de que o Nginx está configurado corretamente (nginx.conf)
-
----
-
-## 🤝 Contribuindo
-
-1. Fork o projeto
-2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
-3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
-4. Push para a branch (`git push origin feature/AmazingFeature`)
-5. Abra um Pull Request
 
 ---
 
