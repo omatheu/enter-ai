@@ -1,0 +1,1370 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="ENTER AI - Document Extraction API powered by AI">
+  <title>ENTER AI - Document Extraction API</title>
+  <link rel="icon" type="image/png" href="./public/logo-enterai.png">
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+      background: linear-gradient(180deg, #FFFFFF 0%, #F5F5F5 100%);
+      color: #1A1A1A;
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header Styles */
+    .header {
+      background: linear-gradient(135deg, #FDB71A 0%, #FFE66D 100%);
+      padding: 24px 32px;
+      box-shadow: 0 4px 12px rgba(253, 183, 26, 0.15);
+      border-bottom: 2px solid #E0A300;
+    }
+
+    .header-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header-text h1 {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1A1A1A;
+      margin: 0;
+      letter-spacing: 2px;
+    }
+
+    .header-text p {
+      font-size: 12px;
+      font-weight: 500;
+      color: #333;
+      margin: 4px 0 0 0;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .header-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      color: #1A1A1A;
+    }
+
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #2ECC71;
+      display: inline-block;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    /* Main Container */
+    .main-container {
+      flex: 1;
+      padding: 32px 16px;
+    }
+
+    .content-wrapper {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1.5fr;
+      gap: 32px;
+    }
+
+    /* Input Card */
+    .input-card {
+      background: white;
+      border-radius: 12px;
+      padding: 28px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      border: 1px solid #E8E8E8;
+      border-top: 4px solid #FDB71A;
+      height: fit-content;
+    }
+
+    .card-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1A1A1A;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #1A1A1A;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .form-select, .form-textarea {
+      width: 100%;
+      padding: 12px;
+      font-family: inherit;
+      font-size: 14px;
+      border: 1.5px solid #E8E8E8;
+      border-radius: 8px;
+      background: #F9F9F9;
+      color: #333;
+      transition: all 0.3s ease;
+    }
+
+    .form-select:hover, .form-textarea:hover {
+      border-color: #FDB71A;
+      background: white;
+    }
+
+    .form-select:focus, .form-textarea:focus {
+      outline: none;
+      border-color: #FDB71A;
+      background: white;
+      box-shadow: 0 0 0 3px rgba(253, 183, 26, 0.1);
+    }
+
+    .form-textarea {
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      resize: vertical;
+      max-height: 300px;
+    }
+
+    .form-error {
+      color: #E74C3C;
+      font-size: 12px;
+      display: block;
+      margin-top: 6px;
+    }
+
+    .drop-zone {
+      border: 2px dashed #E0A300;
+      border-radius: 12px;
+      padding: 32px 20px;
+      text-align: center;
+      background: #FFFBF0;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .drop-zone:hover {
+      border-color: #FDB71A;
+      background: #FFF8E6;
+    }
+
+    .drop-zone.dragover {
+      border-color: #FDB71A;
+      background: #FFE66D;
+      transform: scale(1.02);
+    }
+
+    .drop-zone.has-file {
+      border-color: #2ECC71;
+      background: #E8F8F5;
+    }
+
+    .file-input {
+      display: none;
+    }
+
+    .drop-icon {
+      font-size: 40px;
+      display: block;
+      margin-bottom: 12px;
+    }
+
+    .drop-content p {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1A1A1A;
+      margin: 0;
+    }
+
+    .file-info {
+      display: block;
+      margin-top: 8px;
+      color: #666;
+      font-size: 12px;
+    }
+
+    .file-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .file-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      background: #F9F9F9;
+      border: 1px solid #E8E8E8;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+
+    .file-item-name {
+      font-weight: 600;
+      color: #1A1A1A;
+      flex: 1;
+    }
+
+    .file-item-size {
+      color: #666;
+      margin-right: 8px;
+    }
+
+    .file-item-remove {
+      background: #E74C3C;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .file-item-remove:hover {
+      background: #C0392B;
+    }
+
+    .action-buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .btn {
+      padding: 14px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #FDB71A 0%, #FFE66D 100%);
+      color: #1A1A1A;
+      box-shadow: 0 4px 12px rgba(253, 183, 26, 0.3);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(253, 183, 26, 0.4);
+    }
+
+    .btn-primary:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .btn-secondary {
+      background: #E8E8E8;
+      color: #333;
+      border: 1.5px solid #D8D8D8;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: #D8D8D8;
+      border-color: #C8C8C8;
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .w-full {
+      width: 100%;
+    }
+
+    .mt-3 {
+      margin-top: 12px;
+    }
+
+    /* Results Card */
+    .results-card {
+      background: white;
+      border-radius: 12px;
+      padding: 28px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      border: 1px solid #E8E8E8;
+      border-top: 4px solid #FDB71A;
+      display: flex;
+      flex-direction: column;
+      height: fit-content;
+    }
+
+    .results-header {
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #E8E8E8;
+    }
+
+    .status-section {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .status-text {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1A1A1A;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      background: #F5F5F5;
+      border: 1px solid #D8D8D8;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #666;
+      text-transform: uppercase;
+    }
+
+    .status-badge.loading {
+      background: #FFF8E6;
+      border-color: #FDB71A;
+      color: #FDB71A;
+      animation: pulse 2s infinite;
+    }
+
+    .status-badge.success {
+      background: #E8F8F5;
+      border-color: #2ECC71;
+      color: #2ECC71;
+    }
+
+    .status-badge.error {
+      background: #FADBD8;
+      border-color: #E74C3C;
+      color: #E74C3C;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .metric {
+      background: #FFFBF0;
+      padding: 12px;
+      border-radius: 8px;
+      border-left: 3px solid #FDB71A;
+    }
+
+    .metric-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: #666;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+    }
+
+    .metric-value {
+      display: block;
+      font-size: 14px;
+      font-weight: 700;
+      color: #1A1A1A;
+      font-family: 'Courier New', monospace;
+    }
+
+    .json-viewer {
+      background: #1A1A1A;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      overflow: auto;
+      max-height: 600px;
+      border: 1px solid #333;
+    }
+
+    .json-viewer pre {
+      margin: 0;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      line-height: 1.5;
+      color: #FDB71A;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .batch-summary {
+      background: #FFFBF0;
+      padding: 12px;
+      border-radius: 6px;
+      border-left: 3px solid #FDB71A;
+      margin-bottom: 16px;
+      font-size: 13px;
+      color: #1A1A1A;
+    }
+
+    .batch-summary strong {
+      font-weight: 700;
+      color: #FDB71A;
+    }
+
+    .results-actions {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .btn-action {
+      padding: 10px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 1.5px solid #FDB71A;
+      background: white;
+      color: #FDB71A;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .btn-action:hover:not(:disabled) {
+      background: #FFFBF0;
+      border-color: #E0A300;
+    }
+
+    .btn-action:active:not(:disabled) {
+      transform: scale(0.98);
+    }
+
+    .btn-action:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Mode Toggle */
+    .mode-toggle {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      background: #FFFBF0;
+      border-radius: 8px;
+      border: 1px solid #FDB71A;
+      margin-bottom: 20px;
+    }
+
+    .mode-toggle-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 50px;
+      height: 24px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #D8D8D8;
+      transition: 0.3s;
+      border-radius: 24px;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.3s;
+      border-radius: 50%;
+    }
+
+    input:checked + .toggle-slider {
+      background-color: #FDB71A;
+    }
+
+    input:checked + .toggle-slider:before {
+      transform: translateX(26px);
+    }
+
+    .mode-badge {
+      padding: 4px 10px;
+      background: white;
+      border: 1.5px solid #FDB71A;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #FDB71A;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .mode-description {
+      font-size: 11px;
+      color: #666;
+      margin-left: auto;
+    }
+
+    /* Footer */
+    .footer {
+      background: linear-gradient(180deg, #FFFBF0 0%, #FFF8E6 100%);
+      border-top: 1px solid #E0A300;
+      padding: 24px;
+      margin-top: 48px;
+    }
+
+    .footer-content {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      color: #666;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 24px;
+    }
+
+    .footer-links a {
+      color: #FDB71A;
+      text-decoration: none;
+      font-weight: 600;
+      transition: color 0.3s ease;
+    }
+
+    .footer-links a:hover {
+      color: #E0A300;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .content-wrapper {
+        grid-template-columns: 1fr;
+        gap: 24px;
+      }
+
+      .metrics {
+        grid-template-columns: 1fr;
+      }
+
+      .results-actions {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .header {
+        padding: 16px 20px;
+      }
+
+      .header-container {
+        flex-direction: column;
+        gap: 16px;
+        text-align: center;
+      }
+
+      .footer-content {
+        flex-direction: column;
+        gap: 16px;
+        text-align: center;
+      }
+
+      .action-buttons {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="header-container">
+      <div class="logo-section">
+        <div class="header-text">
+          <h1>ENTER AI</h1>
+          <p>Document Extraction API</p>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main-container">
+    <div class="content-wrapper">
+      <!-- Left Panel - Inputs -->
+      <section class="left-panel">
+        <div class="input-card">
+          <h2 class="card-title">⚙️ Extraction Setup</h2>
+
+          <!-- Mode Toggle -->
+          <div class="mode-toggle">
+            <span class="mode-toggle-label">Mode:</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="mode-toggle" checked>
+              <span class="toggle-slider"></span>
+            </label>
+            <span id="mode-badge" class="mode-badge">Batch</span>
+            <span id="mode-description" class="mode-description">Multiple PDFs with schemas</span>
+          </div>
+
+          <!-- Schema Editor -->
+          <div class="form-group">
+            <label for="schema">Extraction Schema (Array Format)</label>
+            <textarea
+              id="schema"
+              class="form-textarea"
+              rows="12"
+              placeholder='[{"label": "carteira_oab", "extraction_schema": {...}}, ...]'
+              spellcheck="false"
+            ></textarea>
+            <small id="schema-error" class="form-error hidden"></small>
+            <small id="schema-hint" style="color: #666; font-size: 11px; display: block; margin-top: 4px;">
+              💡 Use array format with label and extraction_schema for each document type
+            </small>
+          </div>
+
+          <!-- File Upload -->
+          <div class="form-group">
+            <label>PDF Documents (Multiple)</label>
+            <div id="drop-zone" class="drop-zone">
+              <input type="file" id="pdf-file" accept=".pdf" multiple class="file-input">
+              <div class="drop-content">
+                <span class="drop-icon">📄</span>
+                <p id="file-name">Click or drag PDFs here</p>
+                <small id="file-info" class="file-info hidden"></small>
+              </div>
+            </div>
+            <div id="file-list" style="margin-top: 12px;"></div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="action-buttons">
+            <button id="extract-btn" class="btn btn-primary">➜ Extract Data</button>
+            <button id="clear-btn" class="btn btn-secondary">🗑️ Clear</button>
+          </div>
+
+          <button id="example-btn" class="btn btn-secondary w-full mt-3">📋 Load Example</button>
+        </div>
+      </section>
+
+      <!-- Right Panel - Results -->
+      <section class="right-panel">
+        <div class="results-card">
+          <div class="results-header">
+            <div class="status-section">
+              <span id="status-text" class="status-text">Ready</span>
+              <span id="status-badge" class="status-badge">Idle</span>
+            </div>
+
+            <div class="metrics">
+              <div class="metric">
+                <span class="metric-label">⏱️ Time</span>
+                <span id="metric-time" class="metric-value">-</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">💰 Cost</span>
+                <span id="metric-cost" class="metric-value">-</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">🔄 Source</span>
+                <span id="metric-source" class="metric-value">-</span>
+              </div>
+            </div>
+          </div>
+
+          <div id="batch-summary" class="batch-summary hidden">
+            <!-- Batch summary will be displayed here -->
+          </div>
+
+          <div class="json-viewer">
+            <pre id="json-output">{
+  "status": "awaiting_input",
+  "message": "Upload PDFs and click Extract"
+}</pre>
+          </div>
+
+          <div class="results-actions">
+            <button id="copy-btn" class="btn-action" disabled title="Copy to clipboard">📋 Copy</button>
+            <button id="csv-btn" class="btn-action" disabled title="Download as CSV">⬇️ CSV</button>
+            <button id="json-btn" class="btn-action" disabled title="Download as JSON">📥 JSON</button>
+            <button id="new-btn" class="btn-action" title="Start new extraction">➕ New</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <p>© 2025 ENTER AI Fellowship | Made with 💛 by Matheus</p>
+    </div>
+  </footer>
+
+  <script>
+    // State management
+    let state = {
+      mode: 'batch', // 'batch' or 'single'
+      schema: '',
+      files: [],
+      status: 'idle',
+      results: null,
+      metrics: { time: '-', cost: '-', source: '-' }
+    };
+
+    // DOM elements
+    const elements = {
+      modeToggle: document.getElementById('mode-toggle'),
+      modeBadge: document.getElementById('mode-badge'),
+      modeDescription: document.getElementById('mode-description'),
+      schema: document.getElementById('schema'),
+      schemaError: document.getElementById('schema-error'),
+      schemaHint: document.getElementById('schema-hint'),
+      pdfFile: document.getElementById('pdf-file'),
+      dropZone: document.getElementById('drop-zone'),
+      fileName: document.getElementById('file-name'),
+      fileInfo: document.getElementById('file-info'),
+      fileList: document.getElementById('file-list'),
+      extractBtn: document.getElementById('extract-btn'),
+      clearBtn: document.getElementById('clear-btn'),
+      exampleBtn: document.getElementById('example-btn'),
+      statusText: document.getElementById('status-text'),
+      statusBadge: document.getElementById('status-badge'),
+      metricTime: document.getElementById('metric-time'),
+      metricCost: document.getElementById('metric-cost'),
+      metricSource: document.getElementById('metric-source'),
+      batchSummary: document.getElementById('batch-summary'),
+      jsonOutput: document.getElementById('json-output'),
+      copyBtn: document.getElementById('copy-btn'),
+      csvBtn: document.getElementById('csv-btn'),
+      jsonBtn: document.getElementById('json-btn'),
+      newBtn: document.getElementById('new-btn')
+    };
+
+    // Mode management
+    function updateMode() {
+      state.mode = elements.modeToggle.checked ? 'batch' : 'single';
+
+      if (state.mode === 'batch') {
+        elements.modeBadge.textContent = 'Batch';
+        elements.modeDescription.textContent = 'Multiple PDFs with schemas';
+        elements.schema.placeholder = '[{"label": "carteira_oab", "extraction_schema": {...}}, ...]';
+        elements.schema.rows = 12;
+        elements.pdfFile.multiple = true;
+        elements.fileName.textContent = state.files.length > 0
+          ? `${state.files.length} file(s) selected`
+          : 'Click or drag PDFs here';
+        document.querySelector('label[for="schema"]').textContent = 'Extraction Schema (Array Format)';
+        elements.schemaHint.style.display = 'block';
+      } else {
+        elements.modeBadge.textContent = 'Single';
+        elements.modeDescription.textContent = 'One PDF with one schema';
+        elements.schema.placeholder = '{"nome": "...", "inscricao": "..."}';
+        elements.schema.rows = 8;
+        elements.pdfFile.multiple = false;
+
+        // Limit to 1 file in single mode
+        if (state.files.length > 1) {
+          state.files = [state.files[0]];
+          updateFileList();
+        }
+
+        elements.fileName.textContent = state.files.length > 0
+          ? state.files[0].name
+          : 'Click or drag PDF here';
+        document.querySelector('label[for="schema"]').textContent = 'Extraction Schema';
+        elements.schemaHint.style.display = 'none';
+      }
+
+      // Clear schema and errors when switching modes
+      elements.schema.value = '';
+      elements.schemaError.classList.add('hidden');
+      state.schema = '';
+    }
+
+    // Validation
+    function validateSchema(schemaStr) {
+      try {
+        if (!schemaStr.trim()) {
+          return { valid: false, error: 'Schema cannot be empty' };
+        }
+        const parsed = JSON.parse(schemaStr);
+
+        // Check if it's an array (batch mode)
+        if (Array.isArray(parsed)) {
+          if (parsed.length === 0) {
+            return { valid: false, error: 'Schema array cannot be empty' };
+          }
+          // Validate each item has label and extraction_schema
+          for (let i = 0; i < parsed.length; i++) {
+            const item = parsed[i];
+            if (!item.label) {
+              return { valid: false, error: `Item ${i + 1} missing "label" field` };
+            }
+            if (!item.extraction_schema || typeof item.extraction_schema !== 'object') {
+              return { valid: false, error: `Item ${i + 1} missing valid "extraction_schema"` };
+            }
+          }
+          return { valid: true, schema: parsed, isBatch: true };
+        }
+
+        // Single object mode (legacy)
+        if (typeof parsed !== 'object' || parsed === null) {
+          return { valid: false, error: 'Schema must be an array or object' };
+        }
+        if (Object.keys(parsed).length === 0) {
+          return { valid: false, error: 'Schema cannot be empty' };
+        }
+        return { valid: true, schema: parsed, isBatch: false };
+      } catch (e) {
+        return { valid: false, error: 'Invalid JSON format: ' + e.message };
+      }
+    }
+
+    // File handling
+    function handleFiles(files) {
+      const validFiles = [];
+      for (const file of files) {
+        if (!file.name.endsWith('.pdf')) {
+          alert(`Skipping ${file.name}: Only PDF files are allowed`);
+          continue;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+          alert(`Skipping ${file.name}: Maximum file size is 10MB`);
+          continue;
+        }
+        validFiles.push(file);
+      }
+
+      if (validFiles.length === 0) {
+        return false;
+      }
+
+      // Single mode: only accept 1 file
+      if (state.mode === 'single') {
+        if (validFiles.length > 1) {
+          alert('Single mode: Only 1 file allowed. Using the first file.');
+        }
+        state.files = [validFiles[0]];
+      } else {
+        // Batch mode: accept multiple files
+        state.files = [...state.files, ...validFiles];
+      }
+
+      updateFileList();
+      return true;
+    }
+
+    function updateFileList() {
+      if (state.files.length === 0) {
+        elements.fileName.textContent = state.mode === 'batch'
+          ? 'Click or drag PDFs here'
+          : 'Click or drag PDF here';
+        elements.fileInfo.classList.add('hidden');
+        elements.dropZone.classList.remove('has-file');
+        elements.fileList.innerHTML = '';
+        return;
+      }
+
+      // Single mode: show file name directly
+      if (state.mode === 'single') {
+        elements.fileName.textContent = state.files[0].name;
+        elements.fileInfo.textContent = `${(state.files[0].size / 1024).toFixed(1)} KB`;
+        elements.fileInfo.classList.remove('hidden');
+        elements.dropZone.classList.add('has-file');
+        elements.fileList.innerHTML = '';
+      } else {
+        // Batch mode: show count and list
+        elements.fileName.textContent = `${state.files.length} file(s) selected`;
+        elements.fileInfo.textContent = `Total: ${(state.files.reduce((sum, f) => sum + f.size, 0) / 1024).toFixed(1)} KB`;
+        elements.fileInfo.classList.remove('hidden');
+        elements.dropZone.classList.add('has-file');
+
+        // Render file list
+        elements.fileList.innerHTML = state.files.map((file, index) => `
+          <div class="file-item">
+            <span class="file-item-name">📄 ${file.name}</span>
+            <span class="file-item-size">${(file.size / 1024).toFixed(1)} KB</span>
+            <button class="file-item-remove" onclick="removeFile(${index})">✕</button>
+          </div>
+        `).join('');
+      }
+    }
+
+    function removeFile(index) {
+      state.files.splice(index, 1);
+      updateFileList();
+    }
+
+    // Make removeFile globally accessible
+    window.removeFile = removeFile;
+
+    // Drag and drop
+    elements.dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      elements.dropZone.classList.add('dragover');
+    });
+
+    elements.dropZone.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      elements.dropZone.classList.remove('dragover');
+    });
+
+    elements.dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      elements.dropZone.classList.remove('dragover');
+
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        handleFiles(Array.from(files));
+      }
+    });
+
+    elements.dropZone.addEventListener('click', () => {
+      elements.pdfFile.click();
+    });
+
+    elements.pdfFile.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        handleFiles(Array.from(e.target.files));
+        e.target.value = ''; // Reset input to allow re-upload
+      }
+    });
+
+    // Update status
+    function updateStatus(status) {
+      state.status = status;
+      
+      const statusConfig = {
+        idle: { text: 'Ready', badge: 'Idle', class: '' },
+        loading: { text: 'Processing...', badge: 'Processing', class: 'loading' },
+        success: { text: 'Extraction Complete', badge: 'Done', class: 'success' },
+        error: { text: 'Error Occurred', badge: 'Error', class: 'error' }
+      };
+
+      const config = statusConfig[status];
+      elements.statusText.textContent = config.text;
+      elements.statusBadge.textContent = config.badge;
+      elements.statusBadge.className = `status-badge ${config.class}`;
+    }
+
+    // Update metrics
+    function updateMetrics(metrics) {
+      state.metrics = metrics;
+      elements.metricTime.textContent = metrics.time;
+      elements.metricCost.textContent = metrics.cost;
+      elements.metricSource.textContent = metrics.source;
+    }
+
+    // Update results
+    function updateResults(results) {
+      state.results = results;
+      elements.jsonOutput.textContent = JSON.stringify(results, null, 2);
+
+      // Show batch summary if applicable
+      if (results && results.batch && results.results) {
+        const labelCounts = {};
+        results.results.forEach(item => {
+          labelCounts[item.label] = (labelCounts[item.label] || 0) + 1;
+        });
+
+        const summaryText = Object.entries(labelCounts)
+          .map(([label, count]) => `<strong>${count}</strong> × ${label}`)
+          .join(', ');
+
+        elements.batchSummary.innerHTML = `
+          Batch extraction completed: ${summaryText}
+          (Total: <strong>${results.count}</strong> documents)
+        `;
+        elements.batchSummary.classList.remove('hidden');
+      } else {
+        elements.batchSummary.classList.add('hidden');
+      }
+
+      const hasResults = results !== null;
+      elements.copyBtn.disabled = !hasResults;
+      elements.csvBtn.disabled = !hasResults;
+      elements.jsonBtn.disabled = !hasResults;
+    }
+
+    // Extract data
+    async function handleExtract() {
+      // Validation
+      state.schema = elements.schema.value;
+
+      const validation = validateSchema(state.schema);
+      if (!validation.valid) {
+        elements.schemaError.textContent = validation.error;
+        elements.schemaError.classList.remove('hidden');
+        return;
+      }
+      elements.schemaError.classList.add('hidden');
+
+      if (state.files.length === 0) {
+        alert('Please upload at least one PDF file');
+        return;
+      }
+
+      // Mode-specific validation
+      if (state.mode === 'single') {
+        // Single mode: must have exactly 1 file and object schema
+        if (state.files.length > 1) {
+          alert('Single mode: Only 1 file allowed');
+          return;
+        }
+        if (validation.isBatch) {
+          alert('Single mode: Schema must be an object, not an array');
+          return;
+        }
+      } else {
+        // Batch mode: validate array schema and file count
+        if (!validation.isBatch) {
+          alert('Batch mode: Schema must be an array with label and extraction_schema fields');
+          return;
+        }
+        if (state.files.length !== validation.schema.length) {
+          alert(`Schema mismatch: You have ${state.files.length} files but ${validation.schema.length} schema entries. They must match.`);
+          return;
+        }
+      }
+
+      // Start extraction
+      updateStatus('loading');
+      elements.extractBtn.disabled = true;
+      const startTime = performance.now();
+
+      try {
+        let results;
+
+        if (state.mode === 'batch') {
+          // Batch mode: process multiple files with their schemas
+          results = await processBatch(state.files, validation.schema);
+        } else {
+          // Single mode: process one file with one schema
+          results = await processSingleFile(state.files[0], validation.schema);
+        }
+
+        const elapsed = (performance.now() - startTime) / 1000;
+
+        updateResults(results);
+        updateMetrics({
+          time: elapsed.toFixed(1) + 's',
+          cost: '$' + (elapsed * 0.001 * state.files.length).toFixed(4),
+          source: 'mock'
+        });
+        updateStatus('success');
+      } catch (error) {
+        updateStatus('error');
+        updateResults({ error: 'Extraction failed: ' + error.message });
+      } finally {
+        elements.extractBtn.disabled = false;
+      }
+    }
+
+    // Process batch mode (multiple files with matching schemas)
+    async function processBatch(files, schemaArray) {
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      const results = files.map((file, index) => {
+        const schemaItem = schemaArray[index];
+        return {
+          file: file.name,
+          label: schemaItem.label,
+          results: generateMockResults(schemaItem.label, schemaItem.extraction_schema),
+          metadata: {
+            source: "heuristic",
+            confidence: 0.92 + Math.random() * 0.07,
+            timestamp: new Date().toISOString()
+          }
+        };
+      });
+
+      return {
+        batch: true,
+        count: files.length,
+        results: results
+      };
+    }
+
+    // Process single file mode (one file with one schema)
+    async function processSingleFile(file, schema) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Determine label from schema keys (best guess)
+      const keys = Object.keys(schema);
+      let label = 'unknown';
+      if (keys.includes('nome') && keys.includes('inscricao')) {
+        label = 'carteira_oab';
+      } else if (keys.includes('sistema') || keys.includes('produto')) {
+        label = 'tela_sistema';
+      }
+
+      return {
+        file: file.name,
+        label: label,
+        results: generateMockResults(label, schema),
+        metadata: {
+          source: "heuristic",
+          confidence: 0.93 + Math.random() * 0.06,
+          timestamp: new Date().toISOString()
+        }
+      };
+    }
+
+    // Generate mock results based on schema
+    function generateMockResults(label, schema) {
+      const mockData = {
+        carteira_oab: {
+          nome: "JOANA D'ARC",
+          inscricao: "101943",
+          seccional: "PR",
+          subsecao: "CURITIBA",
+          categoria: "ADVOGADA",
+          endereco_profissional: "Rua XV de Novembro, 123",
+          telefone_profissional: "(41) 3333-4444",
+          situacao: "REGULAR"
+        },
+        tela_sistema: {
+          data_base: "01/01/2025",
+          data_vencimento: "15/02/2025",
+          quantidade_parcelas: "12",
+          produto: "Empréstimo Pessoal",
+          sistema: "COBRANCA",
+          tipo_de_operacao: "Crédito",
+          tipo_de_sistema: "Web",
+          pesquisa_por: "Cliente",
+          pesquisa_tipo: "CPF",
+          valor_parcela: "R$ 500,00",
+          cidade: "São Paulo"
+        }
+      };
+
+      const result = {};
+      const baseData = mockData[label] || {};
+
+      for (const key in schema) {
+        result[key] = baseData[key] || null;
+      }
+
+      return result;
+    }
+
+    // Clear form
+    function handleClear() {
+      state.schema = '';
+      state.files = [];
+      state.status = 'idle';
+      state.results = null;
+      state.metrics = { time: '-', cost: '-', source: '-' };
+
+      elements.schema.value = '';
+      elements.pdfFile.value = '';
+      elements.schemaError.classList.add('hidden');
+      updateFileList();
+
+      updateStatus('idle');
+      updateMetrics({ time: '-', cost: '-', source: '-' });
+      updateResults(null);
+
+      const message = state.mode === 'batch'
+        ? 'Upload PDFs and click Extract'
+        : 'Upload a PDF and click Extract';
+      elements.jsonOutput.textContent = `{\n  "status": "awaiting_input",\n  "message": "${message}"\n}`;
+    }
+
+    // Load example
+    function loadExample() {
+      if (state.mode === 'batch') {
+        // Batch mode example: load dataset.json format
+        elements.schema.value = JSON.stringify([
+          {
+            "label": "carteira_oab",
+            "extraction_schema": {
+              "nome": "Nome do profissional, normalmente no canto superior esquerdo da imagem",
+              "inscricao": "Número de inscrição do profissional",
+              "seccional": "Seccional do profissional",
+              "subsecao": "Subseção à qual o profissional faz parte",
+              "categoria": "Categoria, pode ser ADVOGADO, ADVOGADA, SUPLEMENTAR, ESTAGIARIO, ESTAGIARIA",
+              "situacao": "Situação do profissional, normalmente no canto inferior direito."
+            }
+          },
+          {
+            "label": "tela_sistema",
+            "extraction_schema": {
+              "data_base": "Data base da operação selectionada",
+              "quantidade_parcelas": "Quantidade de parcelas da operação selectionada",
+              "produto": "Produto da operação selectionada",
+              "sistema": "Sistema da operação selectionada"
+            }
+          }
+        ], null, 2);
+        state.schema = elements.schema.value;
+        alert('Batch example loaded! Now upload 2 PDF files (1 carteira_oab + 1 tela_sistema) to match the schema entries.');
+      } else {
+        // Single mode example: load simple object schema
+        elements.schema.value = JSON.stringify({
+          "nome": "Nome do profissional",
+          "inscricao": "Número de inscrição",
+          "seccional": "Seccional OAB",
+          "situacao": "Situação do profissional"
+        }, null, 2);
+        state.schema = elements.schema.value;
+        alert('Single mode example loaded! Now upload 1 PDF file (carteira_oab).');
+      }
+    }
+
+    // Copy to clipboard
+    function copyToClipboard() {
+      if (state.results) {
+        navigator.clipboard.writeText(JSON.stringify(state.results, null, 2))
+          .then(() => alert('Copied to clipboard!'))
+          .catch(() => alert('Failed to copy'));
+      }
+    }
+
+    // Download JSON
+    function downloadJSON() {
+      if (state.results) {
+        const blob = new Blob([JSON.stringify(state.results, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'extraction-results.json';
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    // Download CSV
+    function downloadCSV() {
+      if (!state.results) return;
+
+      let csv = '';
+
+      if (state.results.batch && state.results.results) {
+        // Batch mode: create CSV with file column
+        const allKeys = new Set();
+        state.results.results.forEach(item => {
+          Object.keys(item.results).forEach(key => allKeys.add(key));
+        });
+
+        const headers = ['file', 'label', ...Array.from(allKeys)].join(',');
+        const rows = state.results.results.map(item => {
+          const values = [
+            item.file,
+            item.label,
+            ...Array.from(allKeys).map(key => {
+              const val = item.results[key];
+              return val === null ? '' : `"${val}"`;
+            })
+          ];
+          return values.join(',');
+        });
+
+        csv = [headers, ...rows].join('\n');
+      } else if (state.results.results) {
+        // Single mode or legacy
+        const item = state.results.results[0] || state.results;
+        const data = item.results || state.results.results;
+        const headers = Object.keys(data).join(',');
+        const values = Object.values(data)
+          .map(v => v === null ? '' : `"${v}"`)
+          .join(',');
+        csv = `${headers}\n${values}`;
+      }
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'extraction-results.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // Event listeners
+    elements.modeToggle.addEventListener('change', updateMode);
+    elements.extractBtn.addEventListener('click', handleExtract);
+    elements.clearBtn.addEventListener('click', handleClear);
+    elements.exampleBtn.addEventListener('click', loadExample);
+    elements.copyBtn.addEventListener('click', copyToClipboard);
+    elements.csvBtn.addEventListener('click', downloadCSV);
+    elements.jsonBtn.addEventListener('click', downloadJSON);
+    elements.newBtn.addEventListener('click', handleClear);
+
+    elements.schema.addEventListener('input', () => {
+      elements.schemaError.classList.add('hidden');
+    });
+
+    // Initialize
+    updateMode(); // Set initial mode
+    updateStatus('idle');
+  </script>
+</body>
+</html>
