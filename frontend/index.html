@@ -128,7 +128,7 @@
       letter-spacing: 0.5px;
     }
 
-    .form-select, .form-textarea {
+    .form-select, .form-textarea, .form-input {
       width: 100%;
       padding: 12px;
       font-family: inherit;
@@ -140,12 +140,12 @@
       transition: all 0.3s ease;
     }
 
-    .form-select:hover, .form-textarea:hover {
+    .form-select:hover, .form-textarea:hover, .form-input:hover {
       border-color: #FDB71A;
       background: white;
     }
 
-    .form-select:focus, .form-textarea:focus {
+    .form-select:focus, .form-textarea:focus, .form-input:focus {
       outline: none;
       border-color: #FDB71A;
       background: white;
@@ -688,6 +688,21 @@
             </small>
           </div>
 
+          <!-- Single label input -->
+          <div class="form-group hidden" id="single-label-group">
+            <label for="single-label">Document Label</label>
+            <input
+              type="text"
+              id="single-label"
+              class="form-input"
+              placeholder="e.g. carteira_oab"
+              autocomplete="off"
+            />
+            <small style="color: #666; font-size: 11px; display: block; margin-top: 4px;">
+              Required in single mode. Matches the label processed by the backend.
+            </small>
+          </div>
+
           <!-- File Upload -->
           <div class="form-group">
             <label>PDF Documents (Multiple)</label>
@@ -774,6 +789,7 @@
       files: [],
       status: 'idle',
       results: null,
+      singleLabel: '',
       metrics: { time: '-', cost: '-', source: '-' }
     };
 
@@ -785,6 +801,8 @@
       schema: document.getElementById('schema'),
       schemaError: document.getElementById('schema-error'),
       schemaHint: document.getElementById('schema-hint'),
+      singleLabelGroup: document.getElementById('single-label-group'),
+      singleLabelInput: document.getElementById('single-label'),
       pdfFile: document.getElementById('pdf-file'),
       dropZone: document.getElementById('drop-zone'),
       fileName: document.getElementById('file-name'),
@@ -806,6 +824,8 @@
       newBtn: document.getElementById('new-btn')
     };
 
+    const API_BASE_URL = (window.__ENTER_AI_API__ || 'http://localhost:8001').replace(/\/$/, '');
+
     // Mode management
     function updateMode() {
       state.mode = elements.modeToggle.checked ? 'batch' : 'single';
@@ -821,12 +841,17 @@
           : 'Click or drag PDFs here';
         document.querySelector('label[for="schema"]').textContent = 'Extraction Schema (Array Format)';
         elements.schemaHint.style.display = 'block';
+        elements.singleLabelGroup.classList.add('hidden');
+        elements.singleLabelInput.value = '';
+        state.singleLabel = '';
       } else {
         elements.modeBadge.textContent = 'Single';
         elements.modeDescription.textContent = 'One PDF with one schema';
         elements.schema.placeholder = '{"nome": "...", "inscricao": "..."}';
         elements.schema.rows = 8;
         elements.pdfFile.multiple = false;
+        elements.singleLabelGroup.classList.remove('hidden');
+        elements.singleLabelInput.value = state.singleLabel;
 
         // Limit to 1 file in single mode
         if (state.files.length > 1) {
@@ -1021,13 +1046,53 @@
       elements.metricSource.textContent = metrics.source;
     }
 
+    function deriveMetrics(result, elapsedSeconds) {
+      if (!result) {
+        return { time: '-', cost: '-', source: '-' };
+      }
+
+      const fallbackTime = elapsedSeconds ? `${elapsedSeconds.toFixed(1)}s` : '-';
+
+      if (result.batch && Array.isArray(result.results)) {
+        const totalDuration = result.results.reduce(
+          (sum, item) => sum + (item.metadata?.duration_ms || 0),
+          0
+        );
+        const totalTokens = result.results.reduce(
+          (sum, item) => sum + (item.metadata?.total_tokens || 0),
+          0
+        );
+        const sources = new Set(
+          result.results.map(item => item.metadata?.source || 'unknown')
+        );
+
+        return {
+          time: totalDuration ? `${(totalDuration / 1000).toFixed(2)}s` : fallbackTime,
+          cost: totalTokens ? `${totalTokens} tokens` : '-',
+          source: sources.size === 1 ? [...sources][0] : 'mixed'
+        };
+      }
+
+      const durationMs = result.metadata?.duration_ms || 0;
+      const totalTokens = result.metadata?.total_tokens || 0;
+      const source = result.metadata?.source || 'unknown';
+
+      return {
+        time: durationMs ? `${(durationMs / 1000).toFixed(2)}s` : fallbackTime,
+        cost: totalTokens ? `${totalTokens} tokens` : '-',
+        source
+      };
+    }
+
     // Update results
     function updateResults(results) {
       state.results = results;
-      elements.jsonOutput.textContent = JSON.stringify(results, null, 2);
 
-      // Show batch summary if applicable
-      if (results && results.batch && results.results) {
+      if (results) {
+        elements.jsonOutput.textContent = JSON.stringify(results, null, 2);
+      }
+
+      if (results && results.batch && Array.isArray(results.results)) {
         const labelCounts = {};
         results.results.forEach(item => {
           labelCounts[item.label] = (labelCounts[item.label] || 0) + 1;
@@ -1037,16 +1102,19 @@
           .map(([label, count]) => `<strong>${count}</strong> × ${label}`)
           .join(', ');
 
+        const processed = results.processed || results.results.length;
+        const total = results.count || processed;
+
         elements.batchSummary.innerHTML = `
-          Batch extraction completed: ${summaryText}
-          (Total: <strong>${results.count}</strong> documents)
+          Processed <strong>${processed}</strong> of <strong>${total}</strong> documents.
+          ${summaryText ? `Labels processed: ${summaryText}` : ''}
         `;
         elements.batchSummary.classList.remove('hidden');
       } else {
         elements.batchSummary.classList.add('hidden');
       }
 
-      const hasResults = results !== null;
+      const hasResults = Boolean(results);
       elements.copyBtn.disabled = !hasResults;
       elements.csvBtn.disabled = !hasResults;
       elements.jsonBtn.disabled = !hasResults;
@@ -1054,7 +1122,6 @@
 
     // Extract data
     async function handleExtract() {
-      // Validation
       state.schema = elements.schema.value;
 
       const validation = validateSchema(state.schema);
@@ -1070,9 +1137,9 @@
         return;
       }
 
-      // Mode-specific validation
+      let singleLabel = '';
+
       if (state.mode === 'single') {
-        // Single mode: must have exactly 1 file and object schema
         if (state.files.length > 1) {
           alert('Single mode: Only 1 file allowed');
           return;
@@ -1081,8 +1148,13 @@
           alert('Single mode: Schema must be an object, not an array');
           return;
         }
+        singleLabel = (elements.singleLabelInput.value || '').trim();
+        if (!singleLabel) {
+          alert('Single mode: Please provide a document label');
+          return;
+        }
+        state.singleLabel = singleLabel;
       } else {
-        // Batch mode: validate array schema and file count
         if (!validation.isBatch) {
           alert('Batch mode: Schema must be an array with label and extraction_schema fields');
           return;
@@ -1093,7 +1165,6 @@
         }
       }
 
-      // Start extraction
       updateStatus('loading');
       elements.extractBtn.disabled = true;
       const startTime = performance.now();
@@ -1102,117 +1173,132 @@
         let results;
 
         if (state.mode === 'batch') {
-          // Batch mode: process multiple files with their schemas
-          results = await processBatch(state.files, validation.schema);
+          results = await processBatch(state.files, validation.schema, (partial) => {
+            updateResults(partial);
+            const partialElapsed = (performance.now() - startTime) / 1000;
+            updateMetrics(deriveMetrics(partial, partialElapsed));
+          });
         } else {
-          // Single mode: process one file with one schema
-          results = await processSingleFile(state.files[0], validation.schema);
+          results = await processSingleFile(state.files[0], validation.schema, state.singleLabel);
         }
 
         const elapsed = (performance.now() - startTime) / 1000;
 
         updateResults(results);
-        updateMetrics({
-          time: elapsed.toFixed(1) + 's',
-          cost: '$' + (elapsed * 0.001 * state.files.length).toFixed(4),
-          source: 'mock'
-        });
+        updateMetrics(deriveMetrics(results, elapsed));
         updateStatus('success');
       } catch (error) {
+        console.error('Extraction failed', error);
         updateStatus('error');
         updateResults({ error: 'Extraction failed: ' + error.message });
+        updateMetrics({ time: '-', cost: '-', source: '-' });
       } finally {
         elements.extractBtn.disabled = false;
       }
     }
 
-    // Process batch mode (multiple files with matching schemas)
-    async function processBatch(files, schemaArray) {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
+    async function processBatch(files, schemaArray, onProgress) {
+      const total = files.length;
+      const aggregated = [];
 
-      const results = files.map((file, index) => {
+      for (let index = 0; index < total; index++) {
+        const file = files[index];
         const schemaItem = schemaArray[index];
-        return {
+
+        if (!schemaItem || !schemaItem.label || !schemaItem.extraction_schema) {
+          throw new Error(`Schema entry ${index + 1} must include "label" and "extraction_schema"`);
+        }
+
+        elements.statusText.textContent = `Processing ${index + 1} of ${total}`;
+        elements.statusBadge.textContent = `Processing ${index + 1}/${total}`;
+        elements.statusBadge.className = 'status-badge loading';
+
+        const raw = await sendExtractionRequest(schemaItem.label, schemaItem.extraction_schema, file);
+        const normalized = normalizeResponse(raw);
+
+        aggregated.push({
           file: file.name,
-          label: schemaItem.label,
-          results: generateMockResults(schemaItem.label, schemaItem.extraction_schema),
-          metadata: {
-            source: "heuristic",
-            confidence: 0.92 + Math.random() * 0.07,
-            timestamp: new Date().toISOString()
-          }
-        };
-      });
+          label: normalized.label,
+          fields: normalized.fields,
+          metadata: normalized.metadata
+        });
+
+        if (typeof onProgress === 'function') {
+          const partial = {
+            batch: true,
+            count: total,
+            processed: aggregated.length,
+            results: [...aggregated]
+          };
+          onProgress(partial);
+        }
+      }
 
       return {
         batch: true,
-        count: files.length,
-        results: results
+        count: total,
+        processed: aggregated.length,
+        results: aggregated
       };
     }
 
-    // Process single file mode (one file with one schema)
-    async function processSingleFile(file, schema) {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+    async function processSingleFile(file, schema, label) {
+      const raw = await sendExtractionRequest(label, schema, file);
+      const normalized = normalizeResponse(raw);
 
-      // Determine label from schema keys (best guess)
-      const keys = Object.keys(schema);
-      let label = 'unknown';
-      if (keys.includes('nome') && keys.includes('inscricao')) {
-        label = 'carteira_oab';
-      } else if (keys.includes('sistema') || keys.includes('produto')) {
-        label = 'tela_sistema';
+      return {
+        batch: false,
+        file: file.name,
+        label: normalized.label,
+        fields: normalized.fields,
+        metadata: normalized.metadata
+      };
+    }
+
+    async function sendExtractionRequest(label, schema, file) {
+      const formData = new FormData();
+      formData.append('label', label);
+      formData.append('extraction_schema', JSON.stringify(schema));
+      formData.append('pdf_file', file, file.name);
+
+      const response = await fetch(`${API_BASE_URL}/extract`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Backend responded with status ${response.status}`);
+      }
+
+      return response.json();
+    }
+
+    function normalizeResponse(raw) {
+      const fields = {};
+      if (Array.isArray(raw.results)) {
+        raw.results.forEach(item => {
+          fields[item.field_name] = {
+            value: item.value,
+            source: item.source,
+            confidence: item.confidence
+          };
+        });
       }
 
       return {
-        file: file.name,
-        label: label,
-        results: generateMockResults(label, schema),
-        metadata: {
-          source: "heuristic",
-          confidence: 0.93 + Math.random() * 0.06,
-          timestamp: new Date().toISOString()
-        }
+        label: raw.label,
+        fields,
+        metadata: raw.metadata || {}
       };
     }
 
-    // Generate mock results based on schema
-    function generateMockResults(label, schema) {
-      const mockData = {
-        carteira_oab: {
-          nome: "JOANA D'ARC",
-          inscricao: "101943",
-          seccional: "PR",
-          subsecao: "CURITIBA",
-          categoria: "ADVOGADA",
-          endereco_profissional: "Rua XV de Novembro, 123",
-          telefone_profissional: "(41) 3333-4444",
-          situacao: "REGULAR"
-        },
-        tela_sistema: {
-          data_base: "01/01/2025",
-          data_vencimento: "15/02/2025",
-          quantidade_parcelas: "12",
-          produto: "Empréstimo Pessoal",
-          sistema: "COBRANCA",
-          tipo_de_operacao: "Crédito",
-          tipo_de_sistema: "Web",
-          pesquisa_por: "Cliente",
-          pesquisa_tipo: "CPF",
-          valor_parcela: "R$ 500,00",
-          cidade: "São Paulo"
-        }
-      };
-
-      const result = {};
-      const baseData = mockData[label] || {};
-
-      for (const key in schema) {
-        result[key] = baseData[key] || null;
+    function formatCSVValue(value) {
+      if (value === null || value === undefined) {
+        return '';
       }
-
-      return result;
+      const stringValue = String(value).replace(/"/g, '""');
+      return `"${stringValue}"`;
     }
 
     // Clear form
@@ -1221,10 +1307,12 @@
       state.files = [];
       state.status = 'idle';
       state.results = null;
+      state.singleLabel = '';
       state.metrics = { time: '-', cost: '-', source: '-' };
 
       elements.schema.value = '';
       elements.pdfFile.value = '';
+      elements.singleLabelInput.value = '';
       elements.schemaError.classList.add('hidden');
       updateFileList();
 
@@ -1265,6 +1353,8 @@
           }
         ], null, 2);
         state.schema = elements.schema.value;
+        elements.singleLabelInput.value = '';
+        state.singleLabel = '';
         alert('Batch example loaded! Now upload 2 PDF files (1 carteira_oab + 1 tela_sistema) to match the schema entries.');
       } else {
         // Single mode example: load simple object schema
@@ -1275,6 +1365,8 @@
           "situacao": "Situação do profissional"
         }, null, 2);
         state.schema = elements.schema.value;
+        elements.singleLabelInput.value = 'carteira_oab';
+        state.singleLabel = 'carteira_oab';
         alert('Single mode example loaded! Now upload 1 PDF file (carteira_oab).');
       }
     }
@@ -1307,36 +1399,44 @@
 
       let csv = '';
 
-      if (state.results.batch && state.results.results) {
-        // Batch mode: create CSV with file column
+      if (state.results.batch && Array.isArray(state.results.results)) {
         const allKeys = new Set();
         state.results.results.forEach(item => {
-          Object.keys(item.results).forEach(key => allKeys.add(key));
+          Object.keys(item.fields || {}).forEach(key => allKeys.add(key));
         });
 
-        const headers = ['file', 'label', ...Array.from(allKeys)].join(',');
+        const orderedKeys = Array.from(allKeys);
+        const headerRow = ['file', 'label', ...orderedKeys].join(',');
+
         const rows = state.results.results.map(item => {
           const values = [
-            item.file,
-            item.label,
-            ...Array.from(allKeys).map(key => {
-              const val = item.results[key];
-              return val === null ? '' : `"${val}"`;
+            formatCSVValue(item.file),
+            formatCSVValue(item.label),
+            ...orderedKeys.map(key => {
+              const field = item.fields?.[key];
+              return formatCSVValue(field ? field.value : '');
             })
           ];
           return values.join(',');
         });
 
-        csv = [headers, ...rows].join('\n');
-      } else if (state.results.results) {
-        // Single mode or legacy
-        const item = state.results.results[0] || state.results;
-        const data = item.results || state.results.results;
-        const headers = Object.keys(data).join(',');
-        const values = Object.values(data)
-          .map(v => v === null ? '' : `"${v}"`)
-          .join(',');
-        csv = `${headers}\n${values}`;
+        csv = [headerRow, ...rows].join('\n');
+      } else if (state.results.fields) {
+        const fieldKeys = Object.keys(state.results.fields);
+        const headerRow = ['file', 'label', ...fieldKeys].join(',');
+        const valueRow = [
+          formatCSVValue(state.results.file || ''),
+          formatCSVValue(state.results.label || ''),
+          ...fieldKeys.map(key => {
+            const field = state.results.fields[key];
+            return formatCSVValue(field ? field.value : '');
+          })
+        ].join(',');
+        csv = `${headerRow}\n${valueRow}`;
+      } else if (state.results.error) {
+        csv = `error\n${formatCSVValue(state.results.error)}`;
+      } else {
+        return;
       }
 
       const blob = new Blob([csv], { type: 'text/csv' });
@@ -1357,6 +1457,9 @@
     elements.csvBtn.addEventListener('click', downloadCSV);
     elements.jsonBtn.addEventListener('click', downloadJSON);
     elements.newBtn.addEventListener('click', handleClear);
+    elements.singleLabelInput.addEventListener('input', (event) => {
+      state.singleLabel = event.target.value.trim();
+    });
 
     elements.schema.addEventListener('input', () => {
       elements.schemaError.classList.add('hidden');
