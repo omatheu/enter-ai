@@ -49,14 +49,20 @@ async def extract_with_recovery(
             LOGGER.info("Recovery success via template pattern for field '%s'", field)
             return normalized, "template", {}
 
-    # 3. Focused LLM retry with single-field schema
-    llm_single_schema = {field: description or f"Valor para o campo {field}"}
+    # 3. Optimized LLM retry with expanded context (single call instead of two)
     base_context = context_text or text
+    patterns = schema_learner.get_patterns(label)
+    example_value = patterns.get(field, {}).get("example")
+
+    # Build best possible description from the start
+    augmented_description = description or f"Valor para o campo {field}"
+    if example_value:
+        augmented_description = f"{augmented_description} (exemplo anterior: {example_value})"
 
     llm_result, llm_meta = await llm_extractor.extract_fields(
         text=base_context,
         label=label,
-        schema=llm_single_schema,
+        schema={field: augmented_description},
         tables=tables,
     )
 
@@ -65,27 +71,6 @@ async def extract_with_recovery(
     if is_valid and normalized not in (None, "", []):
         LOGGER.info("Recovery success via LLM retry for field '%s'", field)
         return normalized, "llm_retry", llm_meta
-
-    # 4. Expanded context retry: include previously learned example when available
-    patterns = schema_learner.get_patterns(label)
-    example_value = patterns.get(field, {}).get("example")
-    augmented_description = description
-    if example_value:
-        augmented_description = f"{description} (exemplo anterior: {example_value})"
-
-    llm_result, llm_meta_expanded = await llm_extractor.extract_fields(
-        text=base_context,
-        label=label,
-        schema={field: augmented_description},
-        tables=tables,
-    )
-    candidate = llm_result.get(field)
-    is_valid, normalized = validator.validate_field(field, candidate, description)
-    if is_valid and normalized not in (None, "", []):
-        LOGGER.info("Recovery success via LLM expanded context for field '%s'", field)
-        metadata = dict(llm_meta_expanded)
-        metadata["step"] = "expanded_context"
-        return normalized, "llm_refined", metadata
 
     LOGGER.info("Recovery failed for field '%s'", field)
     return None, "not_found", {}

@@ -19,5 +19,5 @@ def test_retry_policy_for_critical_field():
 
 
 def test_retry_policy_for_generic_field():
-    assert ConfidenceScorer.should_retry_with_llm(0.71, "nome") is True
-    assert ConfidenceScorer.should_retry_with_llm(0.75, "nome") is False
+    assert ConfidenceScorer.should_retry_with_llm(0.77, "nome") is True
+    assert ConfidenceScorer.should_retry_with_llm(0.80, "nome") is False

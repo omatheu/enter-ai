@@ -11,12 +11,12 @@ class ConfidenceScorer:
 
     SOURCE_BASE = {
         "cache": 0.98,
-        "heuristic": 0.65,
-        "heuristic_retry": 0.68,
-        "template": 0.75,
-        "llm": 0.85,
-        "llm_retry": 0.87,
-        "llm_refined": 0.9,
+        "heuristic": 0.70,
+        "heuristic_retry": 0.73,
+        "template": 0.78,
+        "llm": 0.88,
+        "llm_retry": 0.90,
+        "llm_refined": 0.92,
         "not_found": 0.0,
     }
 
@@ -72,7 +72,7 @@ class ConfidenceScorer:
         """Decide if we should attempt a more expensive recovery step."""
 
         field_lower = field.lower()
-        threshold = 0.72
+        threshold = 0.78
         if field_lower in ConfidenceScorer.CRITICAL_FIELDS:
             threshold = 0.85
         return confidence < threshold

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 from typing import Any, Dict, Iterable, Optional
@@ -41,7 +42,7 @@ class ExtractionService:
         self.cache = cache or MemoryCache()
         self.schema_learner = schema_learner or SchemaLearner()
         settings = get_settings()
-        self.llm_context_chars = min(2500, settings.extraction_max_chars)
+        self.llm_context_chars = min(1800, settings.extraction_max_chars)
         self.max_table_rows = 40
 
     async def extract(self, request: ExtractionRequest) -> ExtractionResult:
@@ -64,11 +65,22 @@ class ExtractionService:
         metadata_payload: Dict[str, Any]
 
         with profiler.track("total_ms"):
-            with profiler.track("pdf_text_ms"):
-                text = self.pdf_extractor.extract_text(request.pdf_path)
-            with profiler.track("pdf_tables_ms"):
-                tables = self.pdf_extractor.extract_tables(request.pdf_path)
-            tables = self._limit_tables(tables, self.max_table_rows)
+            # Try to get PDF content from cache
+            pdf_hash = self._hash_pdf(request.pdf_path)
+            cached_content = self.cache.get_pdf_content(pdf_hash)
+
+            if cached_content:
+                LOGGER.info("PDF content cache hit for %s", pdf_hash[:8])
+                text, tables = cached_content
+            else:
+                with profiler.track("pdf_text_ms"):
+                    text = self.pdf_extractor.extract_text(request.pdf_path)
+                with profiler.track("pdf_tables_ms"):
+                    tables = self.pdf_extractor.extract_tables(request.pdf_path)
+                tables = self._limit_tables(tables, self.max_table_rows)
+                # Cache the PDF content
+                self.cache.set_pdf_content(pdf_hash, text, tables)
+
             learned_patterns = self.schema_learner.get_patterns(request.label)
 
             field_details: Dict[str, Dict[str, Any]] = {
@@ -179,67 +191,89 @@ class ExtractionService:
                     if info["value"] is None:
                         info["needs_retry"] = True
 
+            # Collect fields that need recovery
+            fields_to_recover = []
             for field, description in request.extraction_schema.items():
                 info = field_details[field]
-                if not info.get("needs_retry", False):
-                    continue
-                if info.get("value") is not None:
-                    continue
+                if info.get("needs_retry", False) and info.get("value") is None:
+                    fields_to_recover.append((field, description or ""))
 
+            # Process recovery in parallel
+            if fields_to_recover:
                 with profiler.track("recovery_ms"):
-                    field_context = build_compact_context(
-                        text,
-                        {field: description or ""},
-                        learned_patterns,
-                        max_chars=self.llm_context_chars,
-                    )
-                    recovered_value, recovered_source, recovery_metadata = await extract_with_recovery(
-                        field=field,
-                        description=description or "",
-                        text=text,
-                        context_text=field_context,
-                        label=request.label,
-                        heuristic_extractor=self.heuristic_extractor,
-                        validator=self.validator,
-                        llm_extractor=self.llm_extractor,
-                        schema_learner=self.schema_learner,
-                        tables=tables,
-                    )
+                    recovery_tasks = []
+                    for field, description in fields_to_recover:
+                        field_context = build_compact_context(
+                            text,
+                            {field: description},
+                            learned_patterns,
+                            max_chars=self.llm_context_chars,
+                        )
+                        task = extract_with_recovery(
+                            field=field,
+                            description=description,
+                            text=text,
+                            context_text=field_context,
+                            label=request.label,
+                            heuristic_extractor=self.heuristic_extractor,
+                            validator=self.validator,
+                            llm_extractor=self.llm_extractor,
+                            schema_learner=self.schema_learner,
+                            tables=tables,
+                        )
+                        recovery_tasks.append((field, description, task))
 
-                if recovery_metadata:
-                    self._merge_metadata(metadata_aggregate, recovery_metadata)
-                    profiler.record("llm_ms", recovery_metadata.get("duration_ms"))
-                    had_llm_call = had_llm_call or "llm" in recovered_source
-
-                if recovered_value is None:
-                    info["needs_retry"] = False
-                    continue
-
-                with profiler.track("validation_ms"):
-                    is_valid, normalized = self.validator.validate_field(field, recovered_value, description or "")
-                if not is_valid or normalized in (None, "", [], {}):
-                    info["needs_retry"] = False
-                    continue
-
-                confidence = ConfidenceScorer.score_extraction(
-                    field=field,
-                    value=normalized,
-                    description=description or "",
-                    source=recovered_source,
-                    context=description or "",
-                    validated=True,
-                )
-
-                if confidence >= info["confidence"]:
-                    info.update(
-                        value=normalized,
-                        source=recovered_source,
-                        confidence=confidence,
-                        validated=True,
+                    # Execute all recovery tasks in parallel
+                    recovery_results = await asyncio.gather(
+                        *[task for _, _, task in recovery_tasks],
+                        return_exceptions=True
                     )
 
-                info["needs_retry"] = False
-                had_llm_call = had_llm_call or recovered_source.startswith("llm")
+                    # Process recovery results
+                    for (field, description, _), result in zip(recovery_tasks, recovery_results):
+                        info = field_details[field]
+
+                        if isinstance(result, Exception):
+                            LOGGER.error("Recovery failed for field '%s': %s", field, result)
+                            info["needs_retry"] = False
+                            continue
+
+                        recovered_value, recovered_source, recovery_metadata = result
+
+                        if recovery_metadata:
+                            self._merge_metadata(metadata_aggregate, recovery_metadata)
+                            profiler.record("llm_ms", recovery_metadata.get("duration_ms"))
+                            had_llm_call = had_llm_call or "llm" in recovered_source
+
+                        if recovered_value is None:
+                            info["needs_retry"] = False
+                            continue
+
+                        with profiler.track("validation_ms"):
+                            is_valid, normalized = self.validator.validate_field(field, recovered_value, description)
+                        if not is_valid or normalized in (None, "", [], {}):
+                            info["needs_retry"] = False
+                            continue
+
+                        confidence = ConfidenceScorer.score_extraction(
+                            field=field,
+                            value=normalized,
+                            description=description,
+                            source=recovered_source,
+                            context=description,
+                            validated=True,
+                        )
+
+                        if confidence >= info["confidence"]:
+                            info.update(
+                                value=normalized,
+                                source=recovered_source,
+                                confidence=confidence,
+                                validated=True,
+                            )
+
+                        info["needs_retry"] = False
+                        had_llm_call = had_llm_call or recovered_source.startswith("llm")
 
             field_values = {field: details["value"] for field, details in field_details.items()}
             field_sources = {field: details["source"] for field, details in field_details.items()}
