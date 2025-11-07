@@ -1051,9 +1051,8 @@
         return { time: '-', cost: '-', source: '-' };
       }
 
-      const fallbackTime = elapsedSeconds ? `${elapsedSeconds.toFixed(1)}s` : '-';
-
       if (result.batch && Array.isArray(result.results)) {
+        // Sum API processing time from all results
         const totalDuration = result.results.reduce(
           (sum, item) => sum + (item.metadata?.duration_ms || 0),
           0
@@ -1066,19 +1065,30 @@
           result.results.map(item => item.metadata?.source || 'unknown')
         );
 
+        // Always use API duration if available, never use browser elapsed time
+        const timeDisplay = totalDuration
+          ? `${(totalDuration / 1000).toFixed(2)}s`
+          : '-';
+
         return {
-          time: totalDuration ? `${(totalDuration / 1000).toFixed(2)}s` : fallbackTime,
+          time: timeDisplay,
           cost: totalTokens ? `${totalTokens} tokens` : '-',
           source: sources.size === 1 ? [...sources][0] : 'mixed'
         };
       }
 
+      // Single file extraction
       const durationMs = result.metadata?.duration_ms || 0;
       const totalTokens = result.metadata?.total_tokens || 0;
       const source = result.metadata?.source || 'unknown';
 
+      // Always use API duration if available, never use browser elapsed time
+      const timeDisplay = durationMs
+        ? `${(durationMs / 1000).toFixed(2)}s`
+        : '-';
+
       return {
-        time: durationMs ? `${(durationMs / 1000).toFixed(2)}s` : fallbackTime,
+        time: timeDisplay,
         cost: totalTokens ? `${totalTokens} tokens` : '-',
         source
       };

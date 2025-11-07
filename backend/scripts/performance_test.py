@@ -13,7 +13,7 @@ FILES_DIR = BASE_DIR / "docs" / "files"
 API_URL = "http://localhost:8001/extract"
 
 
-async def test_single_extraction(session: aiohttp.ClientSession, item: dict) -> dict:
+async def single_extraction(session: aiohttp.ClientSession, item: dict) -> dict:
     """Test a single extraction request."""
     pdf_path = FILES_DIR / item["pdf_path"]
 
@@ -63,7 +63,7 @@ async def test_single_extraction(session: aiohttp.ClientSession, item: dict) -> 
         }
 
 
-async def test_sequential():
+async def run_sequential():
     """Test sequential processing."""
     print("\n=== Sequential Processing Test ===")
 
@@ -78,7 +78,7 @@ async def test_sequential():
         results = []
 
         for item in test_items:
-            result = await test_single_extraction(session, item)
+            result = await single_extraction(session, item)
             results.append(result)
             print(
                 f"  {result['pdf']}: {result['duration']:.2f}s ({result['status']})"
@@ -92,7 +92,7 @@ async def test_sequential():
     return results, total_duration
 
 
-async def test_parallel():
+async def run_parallel():
     """Test parallel processing."""
     print("\n=== Parallel Processing Test ===")
 
@@ -106,7 +106,7 @@ async def test_parallel():
         total_start = time.perf_counter()
 
         # Launch all requests in parallel
-        tasks = [test_single_extraction(session, item) for item in test_items]
+        tasks = [single_extraction(session, item) for item in test_items]
         results = await asyncio.gather(*tasks)
 
         total_duration = time.perf_counter() - total_start
@@ -121,7 +121,7 @@ async def test_parallel():
     return results, total_duration
 
 
-async def test_cache_performance():
+async def run_cache_performance():
     """Test cache performance with same PDF."""
     print("\n=== Cache Performance Test ===")
 
@@ -133,12 +133,12 @@ async def test_cache_performance():
     async with aiohttp.ClientSession() as session:
         # First call (no cache)
         print("First call (cold):")
-        result1 = await test_single_extraction(session, test_item)
+        result1 = await single_extraction(session, test_item)
         print(f"  Duration: {result1['duration']:.2f}s")
 
         # Second call (should hit cache)
         print("\nSecond call (cached):")
-        result2 = await test_single_extraction(session, test_item)
+        result2 = await single_extraction(session, test_item)
         print(f"  Duration: {result2['duration']:.2f}s")
         print(f"  Speedup: {result1['duration'] / result2['duration']:.2f}x")
         print(
@@ -152,13 +152,13 @@ async def main():
     print("=" * 50)
 
     # Test cache
-    await test_cache_performance()
+    await run_cache_performance()
 
     # Test sequential
-    seq_results, seq_time = await test_sequential()
+    seq_results, seq_time = await run_sequential()
 
     # Test parallel
-    par_results, par_time = await test_parallel()
+    par_results, par_time = await run_parallel()
 
     # Summary
     print("\n" + "=" * 50)

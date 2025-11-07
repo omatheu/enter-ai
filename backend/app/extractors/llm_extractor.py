@@ -42,17 +42,16 @@ class LLMExtractor:
         schema_json = json.dumps(schema, ensure_ascii=False, indent=2)
         tables_json = json.dumps(tables or [], ensure_ascii=False, indent=2)
 
+        # Optimized prompt to reduce tokens while maintaining quality
         prompt = (
-            "You are an assistant that extracts structured information from PDF text.\n"
-            "Return a JSON object mapping each requested field to its extracted value.\n"
-            "If a value cannot be found, return null.\n"
-            "Only respond with valid JSON."
+            "Extract structured data from PDF text. Return only valid JSON mapping field names to values.\n"
+            "Use null for missing values."
         )
 
         user_content = (
             f"Label: {label}\n"
-            f"Schema (field: description):\n{schema_json}\n\n"
-            f"PDF Text:\n{truncated_text}\n"
+            f"Fields:\n{schema_json}\n"
+            f"Text:\n{truncated_text}\n"
         )
 
         if tables_json != "[]":

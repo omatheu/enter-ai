@@ -8,6 +8,9 @@ from typing import Any, Dict, Optional
 class SchemaLearner:
     """Captures observed extraction strategies per label/field."""
 
+    MAX_PATTERNS_PER_LABEL = 50  # Prevent unbounded growth
+    MAX_LABELS = 100
+
     def __init__(self) -> None:
         self.learned: Dict[str, Dict[str, Dict[str, Any]]] = {}
 
@@ -20,7 +23,16 @@ class SchemaLearner:
     ) -> None:
         """Store how each field was extracted for future hints."""
 
+        # Prevent unbounded growth of labels
+        if len(self.learned) >= self.MAX_LABELS:
+            return
+
         label_store = self.learned.setdefault(label, {})
+
+        # Prevent unbounded growth of patterns per label
+        if len(label_store) >= self.MAX_PATTERNS_PER_LABEL:
+            return
+
         for field, value in results.items():
             if value in (None, "", [], {}, ()):
                 continue

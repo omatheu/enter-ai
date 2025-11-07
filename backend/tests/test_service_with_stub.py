@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Any, Dict, Tuple
+from unittest.mock import patch
 
 import pytest
 
@@ -27,13 +28,20 @@ async def test_service_returns_expected_structure():
         pdf_path=str(pdf_path),
     )
 
-    service = ExtractionService(llm_extractor=StubLLMExtractor())
-    result = await service.extract(request)
+    # Mock settings to avoid needing OPENAI_API_KEY in tests
+    with patch("app.services.extraction.get_settings") as mock_settings:
+        mock_settings.return_value.extraction_max_chars = 6000
+        mock_settings.return_value.openai_api_key = "test-key"
+        mock_settings.return_value.openai_model = "gpt-5-mini"
+        mock_settings.return_value.temperature = 1.0
 
-    assert result.label == "carteira_oab"
-    assert result.results[0].field_name == "nome"
-    assert result.results[0].value == "fake-nome"
-    assert result.metadata.model == "stub"
-    assert result.metadata.profiling is not None
-    assert "total_ms" in result.metadata.profiling
-    assert result.flat["nome"] == "fake-nome"
+        service = ExtractionService(llm_extractor=StubLLMExtractor())
+        result = await service.extract(request)
+
+        assert result.label == "carteira_oab"
+        assert result.results[0].field_name == "nome"
+        assert result.results[0].value == "fake-nome"
+        assert result.metadata.model == "stub"
+        assert result.metadata.profiling is not None
+        assert "total_ms" in result.metadata.profiling
+        assert result.flat["nome"] == "fake-nome"

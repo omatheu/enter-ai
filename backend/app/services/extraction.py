@@ -46,12 +46,12 @@ class ExtractionService:
         self.max_table_rows = 40
 
     async def extract(self, request: ExtractionRequest) -> ExtractionResult:
-        LOGGER.info("Starting extraction for %s", request.label)
+        LOGGER.info("Starting extraction label=%s fields=%s", request.label, len(request.extraction_schema))
 
-        cache_key = self._build_cache_key(request)
+        cache_key = await self._build_cache_key(request)
         cached_payload = self.cache.get_pdf_result(cache_key)
         if cached_payload:
-            LOGGER.info("Cache hit for %s", request.label)
+            LOGGER.info("Cache hit label=%s", request.label)
             cached_result = ExtractionResult.model_validate(cached_payload)
             cached_result.metadata.source = "cache"
             return cached_result
@@ -66,11 +66,11 @@ class ExtractionService:
 
         with profiler.track("total_ms"):
             # Try to get PDF content from cache
-            pdf_hash = self._hash_pdf(request.pdf_path)
+            pdf_hash = await self._hash_pdf_async(request.pdf_path)
             cached_content = self.cache.get_pdf_content(pdf_hash)
 
             if cached_content:
-                LOGGER.info("PDF content cache hit for %s", pdf_hash[:8])
+                LOGGER.info("PDF content cache hit hash=%s", pdf_hash[:8])
                 text, tables = cached_content
             else:
                 with profiler.track("pdf_text_ms"):
@@ -78,8 +78,8 @@ class ExtractionService:
                 with profiler.track("pdf_tables_ms"):
                     tables = self.pdf_extractor.extract_tables(request.pdf_path)
                 tables = self._limit_tables(tables, self.max_table_rows)
-                # Cache the PDF content
                 self.cache.set_pdf_content(pdf_hash, text, tables)
+                LOGGER.debug("PDF content cached hash=%s tables=%s", pdf_hash[:8], len(tables or []))
 
             learned_patterns = self.schema_learner.get_patterns(request.label)
 
@@ -124,6 +124,7 @@ class ExtractionService:
                             field, heuristic_value, description or ""
                         )
                     if is_valid:
+                        self._log_field_event(field, "heuristic_success")
                         confidence = ConfidenceScorer.score_extraction(
                             field=field,
                             value=normalized,
@@ -142,10 +143,12 @@ class ExtractionService:
 
                         if info["needs_retry"]:
                             llm_schema[field] = description
-                        continue
+                            self._log_field_event(field, "heuristic_low_confidence", confidence=confidence)
+                    continue
 
                 info["needs_retry"] = True
                 llm_schema[field] = description
+                self._log_field_event(field, "heuristic_failed")
 
             if llm_schema:
                 llm_context = build_compact_context(
@@ -161,6 +164,12 @@ class ExtractionService:
                         schema=llm_schema,
                         tables=tables,
                     )
+                LOGGER.info(
+                    "LLM batch label=%s fields=%s tokens=%s",
+                    request.label,
+                    len(llm_schema),
+                    llm_metadata.get("total_tokens"),
+                )
                 self._merge_metadata(metadata_aggregate, llm_metadata)
                 profiler.record("llm_ms", llm_metadata.get("duration_ms"))
                 had_llm_call = True
@@ -172,6 +181,7 @@ class ExtractionService:
                         is_valid, normalized = self.validator.validate_field(field, candidate, description or "")
 
                     if is_valid and normalized not in (None, "", [], {}):
+                        self._log_field_event(field, "llm_success")
                         confidence = ConfidenceScorer.score_extraction(
                             field=field,
                             value=normalized,
@@ -190,6 +200,7 @@ class ExtractionService:
                     info["needs_retry"] = ConfidenceScorer.should_retry_with_llm(info["confidence"], field)
                     if info["value"] is None:
                         info["needs_retry"] = True
+                        self._log_field_event(field, "schedule_recovery", confidence=info["confidence"])
 
             # Collect fields that need recovery
             fields_to_recover = []
@@ -246,12 +257,14 @@ class ExtractionService:
                             had_llm_call = had_llm_call or "llm" in recovered_source
 
                         if recovered_value is None:
+                            self._log_field_event(field, "recovery_no_value")
                             info["needs_retry"] = False
                             continue
 
                         with profiler.track("validation_ms"):
                             is_valid, normalized = self.validator.validate_field(field, recovered_value, description)
                         if not is_valid or normalized in (None, "", [], {}):
+                            self._log_field_event(field, "recovery_invalid")
                             info["needs_retry"] = False
                             continue
 
@@ -271,6 +284,7 @@ class ExtractionService:
                                 confidence=confidence,
                                 validated=True,
                             )
+                            self._log_field_event(field, "recovery_success", source=recovered_source)
 
                         info["needs_retry"] = False
                         had_llm_call = had_llm_call or recovered_source.startswith("llm")
@@ -296,6 +310,13 @@ class ExtractionService:
         profiling_snapshot = profiler.snapshot()
         if profiling_snapshot:
             metadata_payload["profiling"] = profiling_snapshot
+            LOGGER.info(
+                "Profiling label=%s total_ms=%s llm_ms=%s recovery_ms=%s",
+                request.label,
+                profiling_snapshot.get("total_ms"),
+                profiling_snapshot.get("llm_ms"),
+                profiling_snapshot.get("recovery_ms"),
+            )
 
         self.schema_learner.learn_from_result(
             label=request.label,
@@ -313,6 +334,12 @@ class ExtractionService:
         )
 
         self.cache.set_pdf_result(cache_key, extraction_result.model_dump(mode="python"))
+        LOGGER.info(
+            "Extraction complete label=%s fields=%s source=%s",
+            request.label,
+            len(request.extraction_schema),
+            extraction_metadata.source,
+        )
         return extraction_result
 
     @staticmethod
@@ -384,15 +411,31 @@ class ExtractionService:
         return tables[:max_rows]
 
     @staticmethod
-    def _build_cache_key(request: ExtractionRequest) -> str:
-        pdf_hash = ExtractionService._hash_pdf(request.pdf_path)
+    async def _build_cache_key(request: ExtractionRequest) -> str:
+        """Build cache key asynchronously to avoid blocking event loop."""
+        pdf_hash = await ExtractionService._hash_pdf_async(request.pdf_path)
         schema_fingerprint = "|".join(sorted(request.extraction_schema.keys()))
         return f"{request.label}:{pdf_hash}:{schema_fingerprint}"
 
     @staticmethod
-    def _hash_pdf(pdf_path: str) -> str:
+    async def _hash_pdf_async(pdf_path: str) -> str:
+        """Hash PDF file asynchronously in thread pool to avoid blocking."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, ExtractionService._hash_pdf_sync, pdf_path)
+
+    @staticmethod
+    def _hash_pdf_sync(pdf_path: str) -> str:
+        """Synchronous PDF hashing (run in thread pool)."""
         hasher = hashlib.sha1()
         with open(pdf_path, "rb") as pdf_file:
             while chunk := pdf_file.read(8192):
                 hasher.update(chunk)
         return hasher.hexdigest()
+
+    @staticmethod
+    def _log_field_event(field: str, message: str, **extra: Any) -> None:
+        suffix = " ".join(f"{key}={value}" for key, value in extra.items())
+        if suffix:
+            LOGGER.info("Field %s | %s %s", field, message, suffix)
+        else:
+            LOGGER.info("Field %s | %s", field, message)

@@ -12,6 +12,7 @@ class Validator:
 
     CPF_REGEX = re.compile(r"^\d{3}\.\d{3}\.\d{3}-\d{2}$")
     CPF_DIGITS_REGEX = re.compile(r"^\d{11}$")
+    DIGITS_ONLY_REGEX = re.compile(r"\D")  # Pre-compile for CPF normalization
     EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
     PHONE_REGEX = re.compile(r"^(?:\+?55)?\s*\(?\d{2}\)?\s*9?\d{4}-?\d{4}$")
     DATE_FORMATS = ("%d/%m/%Y", "%Y-%m-%d")
@@ -20,12 +21,10 @@ class Validator:
     def validate_cpf(value: str) -> bool:
         """Validate CPF format (structure only, not checksum)."""
 
-        if Validator.CPF_REGEX.match(value):
-            digits = re.sub(r"\D", "", value)
-        else:
-            digits = re.sub(r"\D", "", value)
-            if not Validator.CPF_DIGITS_REGEX.match(digits):
-                return False
+        digits = Validator.DIGITS_ONLY_REGEX.sub("", value)
+
+        if not Validator.CPF_DIGITS_REGEX.match(digits):
+            return False
 
         if digits == digits[0] * 11:
             return False
@@ -84,7 +83,7 @@ class Validator:
 
         if "cpf" in field_lower or "cpf" in desc_lower:
             if Validator.validate_cpf(candidate):
-                digits = re.sub(r"\D", "", candidate)
+                digits = Validator.DIGITS_ONLY_REGEX.sub("", candidate)
                 normalized = (
                     f"{digits[:3]}.{digits[3:6]}.{digits[6:9]}-{digits[9:11]}"
                     if len(digits) == 11

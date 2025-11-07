@@ -9,6 +9,20 @@ from typing import Optional
 class HeuristicExtractor:
     """Provides lightweight, regex-driven extraction strategies."""
 
+    # Pre-compiled regex patterns for performance (avoid recompilation)
+    _COMPILED_PATTERNS = {
+        "cpf": re.compile(r"\b\d{3}\.\d{3}\.\d{3}-\d{2}\b", re.IGNORECASE),
+        "cnpj": re.compile(r"\b\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}\b", re.IGNORECASE),
+        "email": re.compile(r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b", re.IGNORECASE),
+        "telefone": re.compile(r"\b(?:\+?55\s*)?\(?\d{2}\)?[\s-]*9?\d{4}[\s-]*\d{4}\b", re.IGNORECASE),
+        "data": re.compile(r"\b\d{1,2}/\d{1,2}/\d{4}\b", re.IGNORECASE),
+        "cep": re.compile(r"\b\d{5}-?\d{3}\b", re.IGNORECASE),
+        "placa": re.compile(r"\b[a-zA-Z]{3}-?\d{4}\b", re.IGNORECASE),
+        "valor": re.compile(r"R?\$\s*\d{1,3}(?:\.\d{3})*,\d{2}", re.IGNORECASE),
+        "numero_documento": re.compile(r"\b\d{6,12}\b", re.IGNORECASE),
+        "subsecao": re.compile(r"Conselho\s+Seccional\s*-\s*[^\n]+", re.IGNORECASE),
+    }
+
     PATTERNS = {
         "cpf": r"\b\d{3}\.\d{3}\.\d{3}-\d{2}\b",
         "cnpj": r"\b\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}\b",
@@ -46,9 +60,12 @@ class HeuristicExtractor:
 
     @classmethod
     def _run_pattern(cls, pattern: str, text: str) -> Optional[str]:
-        match = re.search(pattern, text, flags=re.IGNORECASE)
-        if match:
-            return match.group().strip()
+        """Run pre-compiled pattern for better performance."""
+        compiled = cls._COMPILED_PATTERNS.get(pattern)
+        if compiled:
+            match = compiled.search(text)
+            if match:
+                return match.group().strip()
         return None
 
     @classmethod
