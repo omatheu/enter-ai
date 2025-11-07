@@ -210,17 +210,28 @@ http --form POST :8001/extract \
       "confidence": 0.0
     }
   ],
+  "flat": {
+    "nome": "JOANA D'ARC",
+    "inscricao": "101943"
+  },
   "metadata": {
-    "model": "gpt-3.5-turbo",
-    "prompt_tokens": 277,
-    "completion_tokens": 50,
-    "total_tokens": 327,
-    "duration_ms": 1234,
-    "source": "llm",
-    "extracted_at": "2025-11-06T15:30:00"
+    "model": "gpt-5-mini",
+    "prompt_tokens": 210,
+    "completion_tokens": 40,
+    "total_tokens": 250,
+    "duration_ms": 2400,
+    "source": "mixed",
+    "extracted_at": "2025-11-06T15:30:00",
+    "profiling": {
+      "pdf_text_ms": 8,
+      "heuristics_ms": 2,
+      "llm_ms": 2100,
+      "total_ms": 2400
+    }
   }
 }
 ```
+> O frontend utiliza o objeto `flat` para mostrar o JSON “limpo”, mas o payload completo mantém `results` (com fonte/confiança) e `metadata.profiling`.
 
 ---
 
@@ -242,10 +253,10 @@ O frontend oferece duas interfaces:
 ### Funcionalidades
 - ✅ Drag & drop de arquivos
 - ✅ Validação de schemas JSON
-- ✅ Visualização de resultados formatados
+- ✅ Visualização simultânea (JSON achatado + detalhes completos)
 - ✅ Export para JSON e CSV
 - ✅ Exemplos pré-carregados
-- ✅ Métricas de performance (tempo, custo, tokens)
+- ✅ Métricas de performance (tempo, custo, tokens) e progresso em tempo real no modo batch
 
 ---
 
@@ -272,6 +283,17 @@ Acesse http://localhost:8080 e:
 1. Clique em "Load Example"
 2. Faça upload dos PDFs correspondentes
 3. Clique em "Extract Data"
+
+---
+
+## 🧱 Arquitetura & Trade-offs
+
+- **Heurísticas primeiro**: campos padronizados (CPF, seccional, subseção, etc.) são extraídos via regex flexíveis. Apenas valores de baixa confiança entram no lote LLM.
+- **Contexto compacto**: o texto do PDF é reduzido a janelas relevantes (com normalização de acentos) antes de chamar o LLM e durante o recovery. Isso mantém o total de tokens e o `duration_ms` dentro da meta de 2–5 s.
+- **Cache multinível**: resultados completos (label+schema) e conteúdo dos PDFs ficam em memória. A primeira execução aprende padrões; as seguintes respondem instantaneamente.
+- **Recuperação paralela**: quando um campo crítico falha, as tentativas de recuperação são disparadas em paralelo (heurísticas relaxadas → prompt dedicado → contexto expandido). As decisões são logadas como `Field <nome> | recovery_success`.
+- **Observabilidade**: `metadata.profiling` acompanha cada resposta, enquanto o backend escreve logs estruturados para cache hits, heurísticas, LLM e recovery (`docker-compose logs -f backend`).
+- **UX responsiva**: o frontend mostra o JSON achatado (`flat`), mantêm os detalhes para exportações e processa lotes com até três uploads simultâneos, exibindo progresso parcial.
 
 ---
 
