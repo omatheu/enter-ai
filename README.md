@@ -377,9 +377,3 @@ Este projeto foi desenvolvido como parte do Fellowship ENTER AI.
 **Matheus** - Fellowship ENTER AI 2025
 
 ---
-
-## 🙏 Agradecimentos
-
-- ENTER AI pelo desafio e oportunidade
-- OpenAI pela API de IA
-- Comunidade open source pelas ferramentas incríveis
